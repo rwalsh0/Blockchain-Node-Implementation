@@ -47,17 +47,26 @@ class Blockchain():
 	def  __init__(self):
 		self.blockchain = []
 		self.pool = []
-		self.new_block('0' * 64)
+		self.proposed_blocks = []
+		self.new_block(self.propose_block('0' * 64))
+		self.senders = []
 
-	def new_block(self, previous_hash=None):
+	def new_block(self, block=None):
+		print("[CONSENSUS] Appended to the blockchain: {}".format(block['current_hash']))
+		self.blockchain.append(block)
+		self.proposed_blocks = []
+
+	def propose_block(self, previous_hash=None):
 		block = {
-			'index': len(self.blockchain) + 1,
+			'index': len(self.blockchain)+1,
 			'transactions': self.pool.copy(),
 			'previous_hash': previous_hash or self.blockchain[-1]['current_hash'],
 		}
 		block['current_hash'] = self.calculate_hash(block)
+		print("[PROPOSAL] Created a block proposal: {}".format(block))
+		self.proposed_blocks.append(block)
 		self.pool = []
-		self.blockchain.append(block)
+		return block
 
 	def last_block(self):
 		return self.blockchain[-1]
@@ -70,7 +79,31 @@ class Blockchain():
 		return hex_hash
 
 	def add_transaction(self, transaction: str) -> bool:
-		if isinstance((tx := validate_transaction(transaction)), dict):
+		tx = validate_transaction(transaction)
+		if isinstance(tx, dict):
+			sender_added = False
+			for idx, sender in enumerate(self.senders):
+				if tx['sender'] == sender[0]:
+					sender_added = True
+					# if greater than update new nonce
+					if tx['nonce'] > sender[1]:
+						self.senders[idx][1] = tx['nonce']	
+
+					# if equal to or less than return invalid nonce
+					else:
+						print("[TX] Received an invalid transaction, wrong sender - {}".format(transaction))
+						return False
+					
 			self.pool.append(tx)
+			if not sender_added:
+				self.senders.append([tx['sender'], tx['nonce']])
+			print("[MEM] Stored transaction in the transaction pool: {}".format(tx['signature']))
 			return True
+		
+		elif tx == TransactionValidationError.INVALID_SENDER:
+			print("[TX] Received an invalid transaction, wrong sender - {}".format(transaction))
+		elif tx == TransactionValidationError.INVALID_MESSAGE:
+			print("[TX] Received an invalid transaction, wrong message - {}".format(transaction))
+		elif tx == TransactionValidationError.INVALID_SIGNATURE:
+			print("[TX] Received an invalid transaction, wrong signature - {}".format(transaction))
 		return False
