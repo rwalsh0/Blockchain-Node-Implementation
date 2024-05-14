@@ -37,7 +37,6 @@ def main():
         while True:
             try:
                 while True:
-
                     # transaction pool becomes non-empty
                     with server.blockchain_lock:
                         try:
@@ -51,8 +50,7 @@ def main():
                             exit()
 
                 # propose block
-                if server.start_consensus == False:
-                    server.blockchain.propose_block(server.blockchain.last_block()['current_hash'])
+
                 # consensus logic
                 # each loop send block requests and append all proposed blocks to list of proposed blocks
                 #check index in every block is the same
@@ -78,11 +76,10 @@ def consensus_protocol(nodes: list[node.Node], f: int=2):
     responses_count = [0] * len(nodes)
     block_request = {
         'type': "values",
-        'payload': server.blockchain.proposed_blocks[0]['index']
+        'payload': len(server.blockchain.blockchain)
     }
     for _ in range(f + 1):
         #might have to thread the loop below
-        print(f+1)
         # USE LOCK on 
 
         for idx, node in enumerate(nodes):
@@ -90,7 +87,6 @@ def consensus_protocol(nodes: list[node.Node], f: int=2):
             # send block request
             try:
                 if node.sending_socket:
-                    print(f"this was sent in consensus {block_request}")
                     network.send_prefixed(node.sending_socket, json.dumps(block_request).encode())
                 else:
                     continue
@@ -98,26 +94,26 @@ def consensus_protocol(nodes: list[node.Node], f: int=2):
                 #node.sending_socket.settimeout(5)
 
                 block_response = json.loads(network.recv_prefixed(node.sending_socket).decode())
-                print(f"this was received in consenssu: {block_response}")
                 # append blocks
+
                 if block_response:
                     for block in block_response:
                         if block not in server.blockchain.proposed_blocks:
                             server.blockchain.proposed_blocks.append(block)
                     responses_count[idx] += 1
 
-            except ConnectionRefusedError or TimeoutError:
-                
+            except ConnectionResetError or TimeoutError:
                 try:
                     node.sending_socket.settimeout(None)
                     node.sending_socket.connect((node.host, node.port))
-                except ConnectionRefusedError:
+                except OSError:
                     nodes.pop(idx)
 
             # if they have a hash for the corresponding index append to known hashes
             # get all blocks with same index and add to blocks
     can_decide = responses_count.count(f + 1) >= len(nodes) - f
-
+    if not can_decide:
+        print("didnt decide")
     # decided block:
     #   > 1 transaction
     #   lowest lexicographical representation of current hash
@@ -148,17 +144,14 @@ def connect_to_node(index: int):
         try:
             sending_socket.connect((server.nodes[index].host,server.nodes[index].port))
             server.nodes[index].sending_socket = sending_socket
-            print(f"received connection from node {(server.nodes[index].host,server.nodes[index].port)}")
+            #print(f"received connection from node {(server.nodes[index].host,server.nodes[index].port)}")
             return
-        
-        
         except KeyboardInterrupt:
             exit()
         except ConnectionRefusedError:
             continue
 
         except TimeoutError:
-            print("timeout")
             try:
                 sending_socket.settimeout(None)
                 sending_socket.connect((server.nodes[index].host,server.nodes[index].port))
@@ -167,8 +160,6 @@ def connect_to_node(index: int):
 
 
 if __name__ == "__main__":
-
-
     node_config = open(config,"r")
     nodes_raw = node_config.readlines()
     for raw in nodes_raw:
@@ -184,7 +175,3 @@ if __name__ == "__main__":
         server.serve_forever()
     except KeyboardInterrupt:
         exit()
-
-
-
-

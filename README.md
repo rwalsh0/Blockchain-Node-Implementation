@@ -1,4 +1,4 @@
-# Dependancies
+# Versions
 ## OS Version
 Windows 11
 

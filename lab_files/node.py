@@ -4,8 +4,6 @@ from threading import Lock
 import socketserver
 import socket
 
-#from blockchain import Blockchain
-#from network import recv_prefixed, send_prefixed
 from lab_files.blockchain import Blockchain
 from lab_files.network import recv_prefixed, send_prefixed
 
@@ -26,40 +24,42 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 				data = recv_prefixed(self.request).decode()
 			except:
 				break
-			json_data = json.loads(data)
-			if json_data['type'] == "transaction":
-				print("[NET] Received a transaction from node {}: {}".format(self.client_address[0], json_data['payload']))
+			try:
+				json_data = json.loads(data)
+				if json_data['type'] == "transaction":
+					with self.server.blockchain.print_lock:
+						print("[NET] Received a transaction from node {}: {}".format(self.client_address[0], json_data['payload']))
 
-				with self.server.blockchain_lock:
-					added = self.server.blockchain.add_transaction(json.dumps(json_data['payload']))	
-					send_prefixed(self.request, json.dumps({'response': added}).encode())
+					with self.server.blockchain_lock:
+						added = self.server.blockchain.add_transaction(json.dumps(json_data['payload']))	
+						send_prefixed(self.request, json.dumps({'response': added}).encode())
 
-			elif json_data['type'] == "values":
-				print("[BLOCK] Received a block request from node {}: {}".format(self.client_address[0], json_data['payload']))
-				if self.server.start_consensus == False and json_data['payload'] > len(self.server.blockchain.blockchain):
-					self.server.blockchain.propose_block(self.server.blockchain.last_block()['current_hash'])
-					self.server.start_consensus = True
+				elif json_data['type'] == "values":
+					#send blocks with corresponding indexes
+					# less than len get them from chain
+					# greater than or equal to propose a new block with index of that
+					with self.server.blockchain.print_lock:
+						print("[BLOCK] Received a block request from node {}: {}".format(self.client_address[0], json_data['payload']))
 
-				with self.server.blockchain_lock:
-					# look through transactions that have index of 2
-					print(f" this is the props blocks : {self.server.blockchain.proposed_blocks}")
-					request = json.dumps(self.server.blockchain.proposed_blocks)
-					print(f"this was sent back {request}")
-					send_prefixed(self.request, request.encode())
+					if json_data['payload'] < len(self.server.blockchain.blockchain):
+						response = json.dumps([self.server.blockchain.blockchain[json_data['payload']]])
+					else:
+						if self.server.start_consensus == False:
+							my_block = self.server.blockchain.propose_block(self.server.blockchain.last_block()['current_hash'])
+							# check if block proposed is same as index wanted
+							if my_block['index'] == json_data['payload']:
+								self.server.blockchain.proposed_blocks.append(my_block)
+							self.server.start_consensus = True
+
+					with self.server.blockchain_lock:
+						# look through transactions that have index of 2
+						response = json.dumps(self.server.blockchain.proposed_blocks)
+						send_prefixed(self.request, response.encode())
+			except TypeError:
+				continue
 
 class Node():
     def __init__(self, host: str, port: int, sending_socket: socket.socket):
         self.host = host
         self.port = port
         self.sending_socket = sending_socket
-
-if __name__ == '__main__':
-	parser = ArgumentParser()
-	parser.add_argument('port', type=int)
-	args = parser.parse_args()
-	port: int = args.port
-
-	HOST = 'localhost'
-
-	with MyTCPServer((HOST, port), MyTCPHandler) as server:
-		server.serve_forever()
