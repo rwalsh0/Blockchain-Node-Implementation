@@ -32,6 +32,7 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 
 					with self.server.blockchain_lock:
 						added = self.server.blockchain.add_transaction(json.dumps(json_data['payload']))	
+						print("this is response sent: {}".format(json.dumps({'response': added})))
 						send_prefixed(self.request, json.dumps({'response': added}).encode())
 
 				elif json_data['type'] == "values":
@@ -43,6 +44,7 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 
 					if json_data['payload'] < len(self.server.blockchain.blockchain):
 						response = json.dumps([self.server.blockchain.blockchain[json_data['payload']]])
+
 					else:
 						if self.server.start_consensus == False:
 							my_block = self.server.blockchain.propose_block(self.server.blockchain.last_block()['current_hash'])
@@ -51,9 +53,11 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 								self.server.blockchain.proposed_blocks.append(my_block)
 							self.server.start_consensus = True
 
+						with self.server.blockchain_lock:
+							# look through transactions that have index of 2
+							response = json.dumps(self.server.blockchain.proposed_blocks)
+							
 					with self.server.blockchain_lock:
-						# look through transactions that have index of 2
-						response = json.dumps(self.server.blockchain.proposed_blocks)
 						send_prefixed(self.request, response.encode())
 			except TypeError:
 				continue

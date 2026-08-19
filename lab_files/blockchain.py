@@ -12,6 +12,7 @@ signature_valid = re.compile('^[a-fA-F0-9]{128}$')
 TransactionValidationError = Enum('TransactionValidationError', ['INVALID_JSON', 'INVALID_SENDER', 'INVALID_MESSAGE', 'INVALID_SIGNATURE'])
 
 def make_transaction(sender, message, nonce, signature) -> str:
+	print("made transaction here")
 	return json.dumps({'sender': sender, 'message': message, 'nonce': nonce, 'signature': signature})
 
 def transaction_bytes(transaction: dict) -> bytes:
@@ -87,6 +88,16 @@ class Blockchain():
 		try:
 			tx = validate_transaction(transaction)
 			if isinstance(tx, dict):
+				if not isinstance(tx['nonce'], int):
+					with self.print_lock:
+						print("[TX] Received an invalid transaction, wrong nonce - {}".format(transaction))
+					return False
+				
+				if tx['nonce'] < 0:
+					with self.print_lock:
+						print("[TX] Received an invalid transaction, wrong nonce - {}".format(transaction))
+					return False
+				
 				# check same sender and same nonce is not in pool together
 				sender_added = False
 				for idx, sender in enumerate(self.senders):
@@ -98,9 +109,9 @@ class Blockchain():
 						# if equal to or less than return invalid nonce
 						else:
 							with self.print_lock:
-								print("[TX] Received an invalid transaction, wrong sender - {}".format(transaction))
+								print("[TX] Received an invalid transaction, wrong nonce - {}".format(transaction))
 							return False
-						
+				
 				self.pool.append(tx)
 				if not sender_added:
 					self.senders.append([tx['sender'], tx['nonce']])
